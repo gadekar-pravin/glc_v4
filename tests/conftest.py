@@ -9,11 +9,37 @@ from __future__ import annotations
 
 import pytest
 
+#: Every env var that can switch tracing on, or give it a UI to link to.
+#:
+#: `glc/main.py` calls `load_dotenv()` at import, so a developer's `.env` is live
+#: for every test that boots the app — and pointing this gateway at a real
+#: collector is the *documented* way to run it. Without this scrub, doing so
+#: turns the suite red on assertions that tracing and content capture are off
+#: (`tests/test_observability.py`, `tests/test_v4_routes.py`), and CI never
+#: reproduces it because CI has no `.env`. So it fails only for whoever enabled
+#: the feature under test — the worst possible audience.
+#:
+#: Tests that want tracing on set these themselves after the fixture runs.
+_TELEMETRY_ENV = (
+    "OTEL_EXPORTER_OTLP_ENDPOINT",
+    "OTEL_EXPORTER_OTLP_TRACES_ENDPOINT",
+    "OTEL_EXPORTER_OTLP_PROTOCOL",
+    "OTEL_EXPORTER_OTLP_TRACES_PROTOCOL",
+    "GLC_OTEL_CONSOLE",
+    "GLC_OTEL_IN_MEMORY",
+    "GLC_OTEL_CAPTURE_CONTENT",
+    "GLC_OTEL_ENABLED",
+    "GLC_TRACE_UI",
+    "GLC_JAEGER_UI",
+)
+
 
 @pytest.fixture(autouse=True)
 def _isolated_glc_state(monkeypatch, tmp_path):
     cfg = tmp_path / "cfg"
     cfg.mkdir()
+    for var in _TELEMETRY_ENV:
+        monkeypatch.delenv(var, raising=False)
     monkeypatch.setenv("GLC_CONFIG_DIR", str(cfg))
     monkeypatch.setenv("GLC_AUDIT_DB", str(tmp_path / "audit.sqlite"))
     monkeypatch.setenv("GLC_PAIRING_DB", str(tmp_path / "pairings.sqlite"))
