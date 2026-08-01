@@ -80,6 +80,7 @@ for chunk in llm.stream("count to 5"):
   <tr><td><code>c</code></td><td>Cerebras</td><td><code>cer</code>, <code>cerebras</code></td></tr>
   <tr><td><code>or</code></td><td>OpenRouter</td><td><code>opr</code>, <code>openrouter</code></td></tr>
   <tr><td><code>gh</code></td><td>GitHub Models</td><td><code>ghb</code>, <code>github</code></td></tr>
+  <tr><td><code>oa</code></td><td>OpenAI</td><td><code>oai</code>, <code>openai</code></td></tr>
 </table>
 <p>Without <code>provider</code>, the gateway tries them in failover order (configurable via <code>LLM_ORDER</code> in <code>.env</code>). Explicit provider = no failover (errors surface immediately).</p>
 
@@ -212,7 +213,11 @@ for chunk in llm.stream("count to 5"):
   <tr><td>Gemini</td><td>gemini-3.1-flash-lite-preview</td><td>15</td><td>1,000</td><td>250K TPM · 1M ctx</td></tr>
   <tr><td>OpenRouter</td><td>nvidia/nemotron-3-super-120b-a12b:free</td><td>20</td><td>50</td><td>per model · pooled</td></tr>
   <tr><td>GitHub Models</td><td>openai/gpt-4.1-mini</td><td>10–15</td><td>50–150</td><td>8K in / 4K out per req</td></tr>
+  <tr><td>OpenAI</td><td>gpt-5.6-terra</td><td>60</td><td>—</td><td>922K in / 128K out · <strong>paid, never free</strong></td></tr>
 </table>
+<p>Every provider above OpenAI has a free tier; OpenAI does not. Its rate numbers
+here are deliberate under-estimates rather than measured limits — too low only
+throttles locally, too high buys 429s.</p>
 
 <h2>Configuration (.env)</h2>
 <p>The gateway reads from <code>EAGV3/.env</code>. All keys are optional — providers without keys are skipped.</p>
@@ -234,11 +239,18 @@ OPENROUTER_MODEL=nvidia/nemotron-3-super-120b-a12b:free
 GITHUB_ACCESS_TOKEN=...
 GITHUB_MODEL=openai/gpt-4.1-mini
 
+OPENAI_API_KEY=...
+OPENAI_MODEL=gpt-5.6-terra
+
 OLLAMA_URL=http://localhost:11434
 OLLAMA_MODEL=gemma4:31b
 
-LLM_ORDER=ollama,gemini,nvidia,groq,cerebras,openrouter,github
+LLM_ORDER=ollama,gemini,nvidia,groq,cerebras,openrouter,github,openai
 GLC_PORT=8111</code></pre>
+<p><code>openai</code> goes last in <code>LLM_ORDER</code> on purpose: the order is a
+failover ring, so the dearest provider belongs at the end of it. The bare alias
+<code>gpt-5.6</code> routes to <code>sol</code>, the most expensive of the family —
+name the variant you mean.</p>
 
 <h2>HTTP API reference</h2>
 <table>

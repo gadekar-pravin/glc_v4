@@ -299,9 +299,28 @@ REASONING_NONE = "none"
 REASONING_LEVELS = ("low", "medium", "high")
 
 
+#: Models that accept only their default temperature. MEASURED against
+#: gpt-5.6-terra on 2026-08-01, which answers a `temperature: 0` with
+#: HTTP 400 `unsupported_value`: "does not support 0 with this model. Only the
+#: default (1) value is supported."
+#:
+#: This one is worth stating rather than healing on the 400, because the healing
+#: loop below only engages when a *reasoning* key was sent — a temperature
+#: rejection is fatal, and every tier in a caller's ladder sets temperature.
+#: Only `gpt-5` is listed because it is the only family measured here. OpenAI's
+#: o-series is widely reported to behave the same way; add it once someone has
+#: actually seen it, not before.
+FIXED_TEMPERATURE_HINTS = ("gpt-5",)
+
+
 def _model_supports_reasoning(model: str) -> bool:
     m = (model or "").lower()
     return any(h in m for h in REASONING_MODEL_HINTS)
+
+
+def _temperature_is_fixed(model: str) -> bool:
+    m = (model or "").lower()
+    return any(h in m for h in FIXED_TEMPERATURE_HINTS)
 
 
 def _thinks_by_default(model: str) -> bool:
@@ -318,6 +337,14 @@ class OpenAICompatProvider(BaseProvider):
         "parallel_tools": True,
         "vision": False,
     }
+
+    #: Which body field carries the output ceiling. Every server on this surface
+    #: reads `max_tokens` except OpenAI's own, whose gpt-5 family rejects it in
+    #: favour of `max_completion_tokens` — a name that also counts the reasoning
+    #: tokens the visible answer never shows. The 400-healing loop below only
+    #: knows how to strip *reasoning* keys, so a wrong name here is a hard 400,
+    #: not a retry.
+    max_tokens_field = "max_tokens"
 
     def _headers(self):
         return {"Authorization": f"Bearer {self.api_key}", "Content-Type": "application/json"}
@@ -459,10 +486,20 @@ class OpenAICompatProvider(BaseProvider):
         body = {
             "model": m,
             "messages": self._translate_messages(messages, system_text),
-            "max_tokens": max_tokens,
-            "temperature": temperature,
+            self.max_tokens_field: max_tokens,
             "stream": False,
         }
+        # A tier that asks for temperature 0 is asking for determinism, and a
+        # model that only accepts its default cannot give it. Omitting the field
+        # is the difference between a run that is non-deterministic and a run
+        # that 400s on every call — but the request went unmet either way, so
+        # `temperature_applied` says so on the result. It is deliberately NOT
+        # plumbed through llm_schemas/db the way `reasoning_applied` is: that
+        # would want a ledger column, and callers who care about determinism
+        # should not be asking this model family in the first place.
+        temperature_applied = not _temperature_is_fixed(m)
+        if temperature_applied:
+            body["temperature"] = temperature
         if tools:
             body["tools"] = self._translate_tools(tools)
             if tool_choice is not None:
@@ -577,6 +614,7 @@ class OpenAICompatProvider(BaseProvider):
                 "model": m,
                 "tool_call_dialect": "native",
                 "reasoning_applied": reasoning_applied,
+                "temperature_applied": temperature_applied,
             }
 
     async def stream(
@@ -676,6 +714,22 @@ class GitHubProvider(OpenAICompatProvider):
 
     def __init__(self, api_key, model):
         super().__init__(api_key, model, "https://models.github.ai/inference")
+
+
+class OpenAIProvider(OpenAICompatProvider):
+    """OpenAI itself, rather than one of the servers that speak its dialect.
+
+    Added when GitHub Models began returning 410 and took the only frontier-rate
+    model this gateway could reach with it. The one thing that is not shared with
+    the other five: the gpt-5 family rejects `max_tokens`.
+    """
+
+    name = "openai"
+    capabilities = {**OpenAICompatProvider.capabilities, "reasoning": True}
+    max_tokens_field = "max_completion_tokens"
+
+    def __init__(self, api_key, model):
+        super().__init__(api_key, model, "https://api.openai.com/v1")
 
 
 # ────────────────────────────────────────────────────────────────────────────
@@ -1235,7 +1289,7 @@ def model_capabilities(provider_name: str, model: str, default_caps: dict) -> di
     if provider_name == "ollama":
         caps["tools"] = True  # we always have prompted fallback
         caps["reasoning"] = False
-    if provider_name in ("groq", "cerebras", "nvidia", "openrouter", "github"):
+    if provider_name in ("groq", "cerebras", "nvidia", "openrouter", "github", "openai"):
         caps["reasoning"] = _model_supports_reasoning(model)
     # V9: vision is fully model-dependent. Override per configured model.
     caps["vision"] = _model_supports_vision(provider_name, model)
@@ -1276,6 +1330,8 @@ def build_providers(cache_store):
         )
     if k := os.getenv("GITHUB_ACCESS_TOKEN"):
         out["github"] = GitHubProvider(k, os.getenv("GITHUB_MODEL", "openai/gpt-4.1-mini"))
+    if k := os.getenv("OPENAI_API_KEY"):
+        out["openai"] = OpenAIProvider(k, os.getenv("OPENAI_MODEL", "gpt-5.6-terra"))
     if om := os.getenv("OLLAMA_MODEL"):
         out["ollama"] = OllamaProvider(om, os.getenv("OLLAMA_URL", "http://localhost:11434"))
     # V9: bake per-model capability overrides (vision/reasoning) into each

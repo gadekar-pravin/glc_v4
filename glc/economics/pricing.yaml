@@ -220,10 +220,16 @@ models:
     output: 0.0
     quality: 0.26
 
-# ── Reference frontier rates (July 2026 list prices) ────────────────────────
-# Not reachable from the default .env, but priced so a deployment that adds an
-# Anthropic/OpenAI provider gets correct dollars with zero code change, and so
-# the cost-per-task lecture has real numbers to compare against.
+# ── Reference frontier rates ────────────────────────────────────────────────
+# The Anthropic rows are still reference-only. The three OpenAI rows are NOT:
+# `openai` is a real provider here now, so these are the rates the ledger bills.
+#
+# gpt-5.6 prices are as of the 2026-07-30 cut, which took Luna down 80% and
+# Terra down 20%; Sol was not cut. Two wrong numbers are in wide circulation and
+# both will pass review unnoticed — the launch prices (Luna 1.00/6.00, Terra
+# 2.50/15.00) that this file used to carry, and OpenRouter's 0.10/0.60 Luna,
+# which is a reseller promo rather than OpenAI list. Check the date before
+# "restoring" either.
   claude-haiku-4.5:
     provider: anthropic
     input: 1.00
@@ -250,15 +256,17 @@ models:
     quality: 0.61
   gpt-5.6-luna:
     provider: openai
-    input: 1.00
-    output: 6.00
+    input: 0.20
+    output: 1.20
     cache_read_multiplier: 0.1
     batch_multiplier: 0.5
     quality: 0.50
+  # The frontier rung of S15Code's ladder, after GitHub Models started 410ing and
+  # took openai/gpt-4.1 with it.
   gpt-5.6-terra:
     provider: openai
-    input: 2.50
-    output: 15.00
+    input: 2.00
+    output: 12.00
     cache_read_multiplier: 0.1
     batch_multiplier: 0.5
     quality: 0.55
@@ -307,6 +315,18 @@ patterns:
     input: 0.0
     output: 0.0
     quality: 0.40
+  # Deliberately `gpt-5*` and not `gpt-*`: globs are matched against the FULL
+  # model string (pricing.py), so `openai/gpt-4.1-mini` — GitHub's free default —
+  # is out of reach either way, but a bare `gpt-oss-120b` would be caught by the
+  # wider glob and billed 13x its real rate. Rates are Terra's, so an unpinned
+  # gpt-5 model over-bills against Luna rather than under-billing against Sol;
+  # pin it in `models:` above if you need exact dollars.
+  - match: "gpt-5*"
+    input: 2.00
+    output: 12.00
+    cache_read_multiplier: 0.1
+    batch_multiplier: 0.5
+    quality: 0.55
 
 # ── v3 per-provider table, kept verbatim as the backward-compatible floor ───
 # Reached only when nothing above matched. These are the exact numbers
@@ -330,6 +350,13 @@ providers:
   github:
     input: 0.0
     output: 0.0
+  # The one row here that is not v3 history. Every other provider on this floor
+  # bills zero because it genuinely is free at the tier we use; OpenAI never is,
+  # and a $0.00 floor would let an unrecognised model through the budget
+  # controller as if it cost nothing — the failure that makes metering useless.
+  openai:
+    input: 2.00
+    output: 12.00
   ollama:
     input: 0.0
     output: 0.0

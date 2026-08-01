@@ -22,6 +22,13 @@ LIMITS = {
     "gemini": {"rpm": 15, "rpd": 1000, "tpm": 250000, "cooldown": 4, "max_ctx": 1000000},
     "openrouter": {"rpm": 20, "rpd": 50, "tpm": 99999999, "cooldown": 3, "max_ctx": 100000},
     "github": {"rpm": 10, "rpd": 50, "tpm": 99999999, "cooldown": 6, "max_ctx": 8000},
+    # max_ctx is checked against the *prompt* estimate (see policy.py and
+    # Router.pick below), so it is gpt-5.6-terra's 922k maximum input, not its
+    # 1.05M context window — the 128k of output has to fit in the difference.
+    # The rate numbers are deliberate under-estimates of an OpenAI paid account
+    # rather than measured limits: too low only throttles us locally, too high
+    # buys 429s. Raise them once this account's real tier is known.
+    "openai": {"rpm": 60, "rpd": 9999, "tpm": 200000, "cooldown": 2, "max_ctx": 922000},
 }
 
 # One Google AI Studio key is one independently-metered provider.  The graph
@@ -50,6 +57,9 @@ SHORTCUTS = {
     "gh": "github",
     "ghb": "github",
     "github": "github",
+    "oa": "openai",
+    "oai": "openai",
+    "openai": "openai",
 }
 
 
