@@ -25,7 +25,11 @@
 
 services:
   jaeger:
-    image: jaegertracing/all-in-one:2.20.0
+    # `jaegertracing/jaeger`, not `jaegertracing/all-in-one`. The v2 rewrite moved
+    # repositories: all-in-one stopped at 1.76 and has no 2.x tag at all, so the
+    # old name with a 2.x tag fails the pull with `manifest unknown` rather than
+    # with anything that names the real problem.
+    image: jaegertracing/jaeger:2.20.0
     container_name: glc-jaeger
     restart: unless-stopped
     ports:
