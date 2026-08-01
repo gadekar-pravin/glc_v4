@@ -66,6 +66,13 @@ _STATS_DDL = """CREATE TABLE IF NOT EXISTS semantic_cache_stats (
 )"""
 
 
+#: Envelope stop_reasons that mean the model did not finish cleanly. The full
+#: set is `Literal["tool_use", "end_turn", "max_tokens", "error"]` on
+#: ChatResponse in glc/llm_schemas.py; these are the two that leave a partial
+#: generation behind, and a partial generation is not an answer worth keeping.
+INCOMPLETE_STOP_REASONS: frozenset[str] = frozenset({"max_tokens", "error"})
+
+
 def cosine(a: list[float], b: list[float]) -> float:
     """Cosine similarity. Returns 0.0 for mismatched or degenerate vectors."""
     if not a or not b or len(a) != len(b):
@@ -95,6 +102,7 @@ class SemanticCacheConfig:
     max_temperature: float = 0.3
     skip_when_tools: bool = True
     skip_when_stream: bool = True
+    skip_when_truncated: bool = True
     scope_dimensions: list[str] = field(default_factory=lambda: ["tenant"])
     task_type: str = "retrieval_query"
     path: str = ""
@@ -231,6 +239,30 @@ class SemanticCache:
             )
         return True, ""
 
+    def should_store(self, response: dict | None) -> tuple[bool, str]:
+        """Whether a response is worth remembering.
+
+        A hit skips the provider entirely, so whatever is stored becomes the
+        final answer for every similar request until the entry expires. That
+        makes an unfinished generation uniquely expensive to cache: one reply
+        cut off mid-sentence becomes a whole TTL of replies cut off
+        mid-sentence, served at zero cost and reported as a hit.
+
+        Empty text is refused whatever the configuration says — a blank cached
+        answer has no use at any setting. Thinking models reach it easily,
+        since reasoning tokens consume max_tokens without ever appearing in
+        output_tokens.
+        """
+        payload = response or {}
+        if not (payload.get("text") or "").strip():
+            return False, "empty completion: nothing worth caching"
+        if self.config.skip_when_truncated and payload.get("stop_reason") in INCOMPLETE_STOP_REASONS:
+            return False, (
+                f"truncated completion (stop_reason {payload.get('stop_reason')}): "
+                "the model did not finish, so this is not an answer"
+            )
+        return True, ""
+
     # ── lookup ───────────────────────────────────────────────────────────────
 
     async def embed(self, text: str) -> list[float] | None:
@@ -337,6 +369,11 @@ class SemanticCache:
     ) -> int | None:
         """Remember a response so a similar future request can skip the call."""
         if not self.config.enabled:
+            return None
+        # Checked before embedding: refusing here also saves the embedding call
+        # that storing would otherwise have paid for.
+        storable, _ = self.should_store(response)
+        if not storable:
             return None
         vec = embedding if embedding is not None else await self.embed(query_text)
         if vec is None:

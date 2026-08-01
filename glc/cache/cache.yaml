@@ -50,6 +50,15 @@ semantic:
   #: Skip caching for streaming responses (nothing to replay from the ledger).
   skip_when_stream: true
 
+  #: Never store a generation the model did not finish (stop_reason max_tokens
+  #: or error). A hit replaces the provider call outright, so one reply cut off
+  #: mid-sentence would otherwise be served as the answer for the whole TTL.
+  #: Thinking models hit this easily: reasoning tokens consume max_tokens
+  #: without appearing in output_tokens, so a budget that looks generous can
+  #: still return truncated — or entirely empty — text. An empty completion is
+  #: refused regardless of this setting.
+  skip_when_truncated: true
+
   #: Cache scope. Which principal dimensions must match for a hit to be
   #: allowed. Empty list = the cache is shared across all callers.
   #: Set to e.g. [tenant] to stop one tenant's answers reaching another's.

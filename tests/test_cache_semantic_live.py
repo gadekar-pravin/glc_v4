@@ -126,10 +126,12 @@ async def test_the_task_prefix_nomic_requires_is_actually_applied(cache):
     be identical, and retrieval quality would quietly degrade with no error.
     """
     text = "What is the boiling point of water at sea level?"
-    as_query = (await E.embed_with_failover([E.OllamaEmbedder(MODEL, OLLAMA_URL)],
-                                            text, "retrieval_query"))[1]["embedding"]
-    as_document = (await E.embed_with_failover([E.OllamaEmbedder(MODEL, OLLAMA_URL)],
-                                               text, "retrieval_document"))[1]["embedding"]
+    as_query = (await E.embed_with_failover([E.OllamaEmbedder(MODEL, OLLAMA_URL)], text, "retrieval_query"))[
+        1
+    ]["embedding"]
+    as_document = (
+        await E.embed_with_failover([E.OllamaEmbedder(MODEL, OLLAMA_URL)], text, "retrieval_document")
+    )[1]["embedding"]
     assert len(as_query) == len(as_document) == 768
     assert cosine(as_query, as_document) < 0.9999
 
@@ -169,8 +171,11 @@ async def test_a_real_unrelated_prompt_misses(cache):
     """Two questions with nothing in common must not collide."""
     fields = {"model": "test-model"}
     await cache.store(
-        "What does HTTP status code 404 mean?", fields, {"text": "Not Found."},
-        provider="p", model="test-model",
+        "What does HTTP status code 404 mean?",
+        fields,
+        {"text": "Not Found."},
+        provider="p",
+        model="test-model",
     )
     found = await cache.lookup("Give me a recipe for pancakes.", fields)
     assert found.hit is False
@@ -212,8 +217,11 @@ async def test_argument_order_does_not_survive_the_embedding(cache):
     """
     fields = {"model": "test-model"}
     await cache.store(
-        "Show me flights from London to New York.", fields, {"text": "LHR -> JFK, 3 options."},
-        provider="p", model="test-model",
+        "Show me flights from London to New York.",
+        fields,
+        {"text": "LHR -> JFK, 3 options."},
+        provider="p",
+        model="test-model",
     )
     found = await cache.lookup("Show me flights from New York to London.", fields)
     assert found.hit is True, (
@@ -235,8 +243,11 @@ async def test_an_antonym_swap_is_correctly_rejected(cache):
     """
     fields = {"model": "test-model"}
     await cache.store(
-        "What is the largest planet in the solar system?", fields, {"text": "Jupiter."},
-        provider="p", model="test-model",
+        "What is the largest planet in the solar system?",
+        fields,
+        {"text": "Jupiter."},
+        provider="p",
+        model="test-model",
     )
     found = await cache.lookup("What is the smallest planet in the solar system?", fields)
     assert found.hit is False
@@ -252,8 +263,11 @@ async def test_a_different_model_misses_even_on_a_real_near_identical_prompt(cac
     the same answer, however close the two questions are."""
     stored = {"model": "cheap-model", "system": "answer briefly"}
     await cache.store(
-        "Which planet in the solar system is the largest?", stored, {"text": "Jupiter."},
-        provider="p", model="cheap-model",
+        "Which planet in the solar system is the largest?",
+        stored,
+        {"text": "Jupiter."},
+        provider="p",
+        model="cheap-model",
     )
     query = "What is the biggest planet in our solar system?"
     assert (await cache.lookup(query, stored)).hit is True
@@ -267,8 +281,12 @@ async def test_a_different_tenant_misses_on_a_real_paraphrase(cache):
     cache.config.scope_dimensions = ["tenant"]
     fields = {"model": "test-model"}
     await cache.store(
-        "Which planet in the solar system is the largest?", fields, {"text": "Jupiter."},
-        provider="p", model="test-model", principal=Principal(tenant="acme"),
+        "Which planet in the solar system is the largest?",
+        fields,
+        {"text": "Jupiter."},
+        provider="p",
+        model="test-model",
+        principal=Principal(tenant="acme"),
     )
     query = "What is the biggest planet in our solar system?"
     assert (await cache.lookup(query, fields, principal=Principal(tenant="acme"))).hit is True
@@ -285,7 +303,8 @@ async def test_a_real_run_records_no_embed_failures(cache):
     """
     before = cache.stats()["embed_failures"]
     fields = {"model": "test-model"}
-    await cache.store("What is the capital of Australia?", fields, {"text": "Canberra."},
-                      provider="p", model="test-model")
+    await cache.store(
+        "What is the capital of Australia?", fields, {"text": "Canberra."}, provider="p", model="test-model"
+    )
     await cache.lookup("What is the capital of Austria?", fields)
     assert cache.stats()["embed_failures"] == before
