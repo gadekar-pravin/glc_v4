@@ -23,6 +23,40 @@ from fastapi.testclient import TestClient
 from glc.routes import observability as obs
 from glc.telemetry import otel as _otel
 
+#: Everything that can switch tracing on or give it a UI to link to. Mirrors the
+#: `_clean` fixture in test_telemetry_otel.py.
+_TELEMETRY_ENV = (
+    "OTEL_EXPORTER_OTLP_ENDPOINT",
+    "OTEL_EXPORTER_OTLP_TRACES_ENDPOINT",
+    "GLC_OTEL_CONSOLE",
+    "GLC_OTEL_IN_MEMORY",
+    "GLC_OTEL_CAPTURE_CONTENT",
+    "GLC_OTEL_ENABLED",
+    "GLC_TRACE_UI",
+    "GLC_JAEGER_UI",
+)
+
+
+@pytest.fixture(autouse=True)
+def _no_collector(monkeypatch):
+    """Start every test from "no tracing configured".
+
+    `glc.main` calls `load_dotenv()` at import, so a developer who points their
+    own `.env` at a real Jaeger — which is the documented way to run this
+    gateway with tracing — used to boot `app_client` with telemetry *active*
+    and fail the assertions below. The suite's own docstring promises none of
+    this "needs a collector running"; that has to be enforced, not assumed,
+    or the result depends on an untracked file that CI never has.
+
+    Tests that want tracing on still opt in by setting these afterwards.
+    """
+    for var in _TELEMETRY_ENV:
+        monkeypatch.delenv(var, raising=False)
+    _otel.reset_telemetry()
+    yield
+    _otel.reset_telemetry()
+
+
 # ── the page ────────────────────────────────────────────────────────────────
 
 
