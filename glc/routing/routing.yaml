@@ -19,25 +19,28 @@
 version: 1
 
 # ── Tiers ───────────────────────────────────────────────────────────────────
-# `order` is the base failover ring, preserved from glc_v3's TIER_TO_ORDER so
-# the default behaviour is unchanged. `min_ctx` filters candidates whose
-# max_ctx cannot hold the estimate — that is what makes HUGE routable instead
-# of a 503.
+# `order` is the base failover ring. Rebuilt 2026-08 on the paid-only provider
+# set (ollama, gemini, openrouter, openai) when the free tiers (github, groq,
+# cerebras, nvidia) were retired; chat.py's TIER_TO_ORDER fallback mirrors
+# TINY and LARGE verbatim and the two must move together. `min_ctx` filters
+# candidates whose max_ctx cannot hold the estimate — that is what makes HUGE
+# routable instead of a 503.
 tiers:
   TINY:
-    order: [github, openrouter, groq, nvidia, cerebras, gemini, ollama]
+    order: [openrouter, gemini, ollama]
     description: short, simple, factual
   LARGE:
-    order: [gemini, groq, nvidia, cerebras, github, openrouter, ollama]
+    order: [gemini, openrouter, ollama]
     description: dense or long-context work
   HUGE:
-    order: [gemini, ollama, openrouter, nvidia, groq]
+    order: [gemini, ollama, openrouter, openai]
     min_ctx: 8000
     description: >
       Above the 8k classifier boundary. v3 refused these outright; v4 keeps
       only providers whose max_ctx actually covers the prompt (Gemini's 1M
-      window is the reason this tier is servable at all) and refuses with a
-      context-specific error if none qualify.
+      window is the reason this tier is servable at all, with OpenAI's 922k
+      as the paid backstop) and refuses with a context-specific error if
+      none qualify.
 
   # ── The cross-model capability ladder ──────────────────────────────────────
   # TINY/LARGE/HUGE above are the CLASSIFIER's ladder: they answer "how big is
@@ -54,38 +57,46 @@ tiers:
   # order` pins the declared preference against the global cost/quality dial,
   # which would otherwise re-sort a one-model rung into a different model.
   #
-  # Every price and latency below was MEASURED against this gateway on
-  # 2026-07-30 with an identical 3-sentence prompt at max_tokens 512,
-  # temperature 0, `reasoning: "off"`. See pricing.yaml for the per-model rows.
+  # The rungs were rebuilt 2026-08 on the paid-only provider set. The gemma4
+  # number below was MEASURED against this gateway on 2026-07-30 (identical
+  # 3-sentence prompt, max_tokens 512, temperature 0, `reasoning: "off"`).
+  # gpt-oss-120b, the model that served STANDARD from Groq, did NOT survive
+  # the host move: OpenRouter's gpt-oss endpoint answers `reasoning: "off"`
+  # with HTTP 400 "Reasoning is mandatory for this endpoint" (measured
+  # 2026-08-02), so the rung runs on llama-3.3 instead. See pricing.yaml for
+  # the per-model rows.
   CHEAP:
     order: [ollama, openrouter]
     strict: true
     objective: order
     description: >
       Local weights first (gemma4:31b, $0.00/Mtok, measured 39.6 s for a
-      379-token answer), then OpenRouter's free tier
-      (nvidia/nemotron-3-super-120b-a12b:free, $0.00, measured 1.8 s). Free in
-      dollars, expensive in wall-clock on the local rung — which is the real
-      tradeoff a cheap rung buys, and the reason latency belongs next to price.
+      379-token answer), then OpenRouter meta-llama/llama-3.3-70b-instruct
+      ($0.13/$0.40 per Mtok) as the network failover. Nearly free in dollars,
+      expensive in wall-clock on the local rung — which is the real tradeoff
+      a cheap rung buys, and the reason latency belongs next to price.
   STANDARD:
-    order: [groq, gemini]
+    order: [openrouter, gemini]
     strict: true
     objective: order
     description: >
-      Groq openai/gpt-oss-120b ($0.15/$0.75 per Mtok, measured 0.74 s, 117
-      output tokens) with Gemini gemini-3.1-flash-lite ($0.25/$1.50, measured
-      1.2 s) as the same-rung failover. Both are genuinely different models
-      from either neighbouring rung.
+      OpenRouter meta-llama/llama-3.3-70b-instruct ($0.13/$0.40 per Mtok,
+      verified live 2026-08-02) with Gemini gemini-3.1-flash-lite
+      ($0.25/$1.50, measured 1.2 s) as the same-rung failover. Both are
+      genuinely different models from the FRONTIER rung; openrouter also
+      anchors CHEAP, so only a gemma4 answer makes the two rungs differ in
+      practice.
   FRONTIER:
-    order: [github, cerebras]
+    order: [openai]
     strict: true
     objective: order
     description: >
-      GitHub Models openai/gpt-4.1 ($2.00/$8.00 per Mtok, measured 2.9 s,
-      $0.000682 for the reference prompt) with Cerebras zai-glm-4.7
-      ($0.50/$0.50, measured 1.0 s) behind it. Note the context ceiling: both
-      cap at 8k, so a prompt above that belongs on HUGE, not here — this ladder
-      prices capability, the other one sizes context.
+      OpenAI gpt-5.6-terra ($2.00/$12.00 per Mtok), the dearest model this
+      gateway reaches, alone on the rung now that the free frontier hosts
+      (GitHub Models, Cerebras) are retired. Unlike its 8k-capped
+      predecessors it takes 922k of input, but a prompt that size still
+      belongs on HUGE — this ladder prices capability, the other one sizes
+      context.
 
 # The escalation ladder, cheapest first. Also defines tier ordering for the
 # role floors and ceilings below, so there is one source of "which tier is

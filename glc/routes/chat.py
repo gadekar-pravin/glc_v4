@@ -58,7 +58,7 @@ from glc.routing import DEFAULT_ROUTER_ORDER, LIMITS, SHORTCUTS
 from glc.routing import policy as _policy
 from glc.telemetry import otel as _otel
 
-DEFAULT_ORDER = ["ollama", "gemini", "nvidia", "groq", "cerebras", "openrouter", "github", "openai"]
+DEFAULT_ORDER = ["ollama", "gemini", "openrouter", "openai"]
 ORDER = [x.strip() for x in os.getenv("LLM_ORDER", ",".join(DEFAULT_ORDER)).split(",") if x.strip()]
 ROUTER_ORDER = [
     x.strip() for x in os.getenv("ROUTER_ORDER", ",".join(DEFAULT_ROUTER_ORDER)).split(",") if x.strip()
@@ -72,13 +72,14 @@ if _AGENT_ROUTING_PATH.exists():
     except Exception as e:  # pragma: no cover
         print(f"[glc] failed to parse agent_routing.yaml: {e!r}")
 
-# V3's hardcoded tier ring. Kept as the module-level name because callers and
-# `/v1/routers` read it, but it is now the *fallback* — `routing.yaml` is
+# The hardcoded tier ring, rebuilt on the paid-only provider set when the free
+# tiers were retired. Kept as the module-level name because callers and
+# `/v1/routers` read it, but it is the *fallback* — `routing.yaml` is
 # authoritative and `_tier_order()` prefers it. The two agree by construction:
 # routing.yaml's TINY and LARGE rings are these lists verbatim.
 TIER_TO_ORDER = {
-    "TINY": ["github", "openrouter", "groq", "nvidia", "cerebras", "gemini", "ollama"],
-    "LARGE": ["gemini", "groq", "nvidia", "cerebras", "github", "openrouter", "ollama"],
+    "TINY": ["openrouter", "gemini", "ollama"],
+    "LARGE": ["gemini", "openrouter", "ollama"],
 }
 
 

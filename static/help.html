@@ -42,7 +42,12 @@
 </header>
 <main>
 
-<p>This service routes LLM calls across <strong>seven free providers</strong>, with automatic failover, rate-limit tracking, persistent logging, and a manual override. Below: how to use it, what each provider offers, and how to get free keys.</p>
+<p>This service routes LLM calls across <strong>three paid providers plus a local
+Ollama</strong>, with automatic failover, rate-limit tracking, persistent logging,
+and a manual override. The free tiers this gateway grew up on (GitHub Models,
+Groq, Cerebras, NVIDIA NIM) were retired in 2026-08 — GitHub Models answers
+410 and the others' quotas kept breaking runs. Below: how to use it, what each
+provider offers, and how to get keys.</p>
 
 <h2>Using the gateway</h2>
 
@@ -52,8 +57,8 @@
 # one-shot
 print(ask("Explain transformers in 3 lines"))
 
-# explicit provider (shortcut keys: g, n, o, gr, c, or, gh)
-print(ask("hi", provider="gr"))   # groq
+# explicit provider (shortcut keys: g, o, or, oa)
+print(ask("hi", provider="or"))   # openrouter
 print(ask("hi", provider="g"))    # gemini
 
 # full client
@@ -74,123 +79,67 @@ for chunk in llm.stream("count to 5"):
 <table>
   <tr><th>Key</th><th>Provider</th><th>Aliases</th></tr>
   <tr><td><code>g</code></td><td>Gemini</td><td><code>gem</code>, <code>gemini</code></td></tr>
-  <tr><td><code>n</code></td><td>NVIDIA NIM</td><td><code>nv</code>, <code>nvidia</code></td></tr>
   <tr><td><code>o</code></td><td>Ollama (local)</td><td><code>oll</code>, <code>ollama</code></td></tr>
-  <tr><td><code>gr</code></td><td>Groq</td><td><code>groq</code></td></tr>
-  <tr><td><code>c</code></td><td>Cerebras</td><td><code>cer</code>, <code>cerebras</code></td></tr>
   <tr><td><code>or</code></td><td>OpenRouter</td><td><code>opr</code>, <code>openrouter</code></td></tr>
-  <tr><td><code>gh</code></td><td>GitHub Models</td><td><code>ghb</code>, <code>github</code></td></tr>
   <tr><td><code>oa</code></td><td>OpenAI</td><td><code>oai</code>, <code>openai</code></td></tr>
 </table>
+<p>The retired providers' shortcuts (<code>gr</code>, <code>c</code>,
+<code>gh</code>, <code>n</code>) still resolve, but land on an unregistered
+provider unless you resurrect one via <code>.env</code>.</p>
 <p>Without <code>provider</code>, the gateway tries them in failover order (configurable via <code>LLM_ORDER</code> in <code>.env</code>). Explicit provider = no failover (errors surface immediately).</p>
 
 <h2>Provider overview</h2>
 
-<h3>1. Gemini (Google AI Studio)</h3>
+<h3>1. Gemini (Google AI Studio, paid tier)</h3>
 <ul>
-  <li>Best models: <code>gemini-3.1-pro-preview</code>, <code>gemini-3.1-flash-lite-preview</code> <span class="star">★ default</span>, <code>gemini-2.5-flash</code>, <code>gemini-2.5-pro</code></li>
+  <li>Best models: <code>gemini-3.1-pro</code>, <code>gemini-3.1-flash</code>, <code>gemini-3.1-flash-lite</code> <span class="star">★ default</span>, <code>gemini-2.5-flash</code></li>
   <li>Context: <strong>1M tokens in / 65K out</strong></li>
-  <li>Free tier (Flash-Lite): ~15 RPM · 250K TPM · 1,000 RPD</li>
-  <li>Pro models: 5 RPM · 25 RPD <span class="warn">(very tight)</span></li>
+  <li>Paid Tier 1 (Flash-Lite): thousands of RPM; the gateway paces itself at
+      <strong>150 RPM · 1M TPM · 10K RPD</strong> — a deliberate under-estimate,
+      raised in <code>glc/routing/core.py</code> once the account's real tier is confirmed</li>
 </ul>
 <p><b>Get a key:</b></p>
 <ol>
   <li>Go to <a href="https://aistudio.google.com/app/apikey" target="_blank">aistudio.google.com/app/apikey</a></li>
   <li>Sign in with your Google account</li>
   <li>Click <strong>Create API key</strong> → pick or create a project → copy the <code>AIza…</code> key</li>
-  <li>No credit card required for free tier</li>
+  <li>Attach the project to a billing account for paid-tier limits</li>
 </ol>
 
-<h3>2. NVIDIA NIM (build.nvidia.com)</h3>
+<h3>2. OpenRouter <span class="badge">one key, many models</span></h3>
 <ul>
-  <li>Top 100B+ models: <code>deepseek-ai/deepseek-r1</code> (671B MoE) <span class="star">★</span>, <code>meta/llama-3.1-405b-instruct</code>, <code>nvidia/llama-3.1-nemotron-ultra-253b-v1</code>, <code>deepseek-ai/deepseek-v3.2</code> <span class="star">★ default</span></li>
-  <li>187 models in catalog total</li>
-  <li>Free tier: <strong>40 RPM</strong>, 1,000 inference credits on signup (request up to 5,000)</li>
-  <li>OpenAI-compatible</li>
-</ul>
-<p><b>Get a key:</b></p>
-<ol>
-  <li>Go to <a href="https://build.nvidia.com/" target="_blank">build.nvidia.com</a></li>
-  <li>Sign in (free NVIDIA Developer Program)</li>
-  <li>Pick any model → click <strong>Get API Key</strong> → copy the <code>nvapi-…</code> key</li>
-  <li>No credit card required</li>
-</ol>
-
-<h3>3. Groq <span class="badge">fastest cloud</span></h3>
-<ul>
-  <li>Top models: <code>llama-3.3-70b-versatile</code> <span class="star">★ default</span>, <code>openai/gpt-oss-120b</code>, <code>openai/gpt-oss-20b</code>, <code>meta-llama/llama-4-scout-17b-16e-instruct</code>, <code>qwen/qwen3-32b</code>, <code>groq/compound</code></li>
-  <li>Speed: 300+ tokens/sec on Llama 3.3 70B</li>
-  <li>Free tier: <strong>30 RPM · 6,000 TPM · 1,000 RPD</strong> (RPD is the binding limit; ~500K tokens/day for 70B)</li>
-  <li>OpenAI-compatible</li>
-</ul>
-<p><b>Get a key:</b></p>
-<ol>
-  <li>Go to <a href="https://console.groq.com" target="_blank">console.groq.com</a></li>
-  <li>Sign in with Google or GitHub</li>
-  <li><strong>API Keys</strong> → <strong>Create API Key</strong> → copy the <code>gsk_…</code> key</li>
-  <li>No credit card required</li>
-</ol>
-
-<h3>4. Cerebras <span class="badge">2000+ tok/s</span></h3>
-<ul>
-  <li>4 models: <code>zai-glm-4.7</code> <span class="star">★ default</span>, <code>qwen-3-235b-a22b-instruct-2507</code>, <code>gpt-oss-120b</code>, <code>llama3.1-8b</code></li>
-  <li>Free tier: <strong>30 RPM · 60K TPM · 1,000,000 tokens/day</strong> <span class="ok">(most generous daily token cap)</span></li>
-  <li><span class="warn">Gotcha: 8,192 token context cap on free tier</span> across all models</li>
-</ul>
-<p><b>Get a key:</b></p>
-<ol>
-  <li>Go to <a href="https://cloud.cerebras.ai" target="_blank">cloud.cerebras.ai</a></li>
-  <li>Sign in with Google or GitHub</li>
-  <li><strong>API Keys</strong> → <strong>Create Key</strong> → copy the <code>csk-…</code> key</li>
-  <li>No credit card required</li>
-</ol>
-
-<h3>5. OpenRouter <span class="badge">one key, many models</span></h3>
-<ul>
-  <li>24 free models with <code>:free</code> suffix. Best:
-    <code>nvidia/nemotron-3-super-120b-a12b:free</code> <span class="star">★ default</span> (262K ctx),
-    <code>nousresearch/hermes-3-llama-3.1-405b:free</code>,
-    <code>qwen/qwen3-next-80b-a3b-instruct:free</code> (262K),
-    <code>openai/gpt-oss-120b:free</code>,
-    <code>google/gemma-4-31b-it:free</code>,
-    <code>meta-llama/llama-3.3-70b-instruct:free</code>
-  </li>
-  <li>Free tier: <strong>20 RPM · 50 RPD per free model</strong> (200 RPD if you've ever added $10 credit)</li>
-  <li>Free models share a daily pool — switching models doesn't reset</li>
+  <li>Paid credits unlock the full catalog (300+ models). Default:
+    <code>meta-llama/llama-3.3-70b-instruct</code> <span class="star">★ default</span>
+    ($0.13/$0.40 per Mtok at the 2026-08 catalog rate)</li>
+  <li><span class="warn">Gotcha: OpenRouter's <code>openai/gpt-oss-120b</code> endpoint
+    400s on <code>reasoning: "off"</code></span> — "Reasoning is mandatory for this
+    endpoint" — which is why the old Groq STANDARD-rung model did not survive the host move</li>
+  <li>Also used here: <code>z-ai/glm-4.7</code> ($0.40/$1.75), S15Code's judge_b</li>
+  <li>Paid accounts are credit-metered with no fixed published RPM; the gateway
+      paces itself at <strong>60 RPM · 500K TPM · 5K RPD</strong> as a deliberate under-estimate</li>
 </ul>
 <p><b>Get a key:</b></p>
 <ol>
   <li>Go to <a href="https://openrouter.ai" target="_blank">openrouter.ai</a></li>
   <li>Sign in with Google or GitHub</li>
   <li><strong>Keys</strong> → <strong>Create Key</strong> → copy the <code>sk-or-…</code> key</li>
+  <li>Add credits — without them only <code>:free</code> models answer, under tight daily caps</li>
 </ol>
 
-<h3>6. GitHub Models <span class="badge">includes GPT-5</span></h3>
+<h3>3. OpenAI</h3>
 <ul>
-  <li><strong>43 frontier models</strong>, including:
-    <code>openai/gpt-5</code>, <code>gpt-5-mini</code>, <code>gpt-5-nano</code>,
-    <code>openai/gpt-4.1</code> (1M ctx), <code>gpt-4.1-mini</code> <span class="star">★ default</span>,
-    <code>openai/o1</code>, <code>o3</code>, <code>o3-mini</code>, <code>o4-mini</code>,
-    <code>meta/meta-llama-3.1-405b-instruct</code>,
-    <code>meta/llama-4-scout-17b-16e-instruct</code> (10M ctx!),
-    <code>deepseek/deepseek-r1</code>, <code>deepseek-v3-0324</code>,
-    <code>xai/grok-3</code>, <code>microsoft/phi-4-reasoning</code>, <code>mistral-ai/codestral-2501</code>
-  </li>
-  <li><span class="warn">Free tier per-request cap: 8K input / 4K output tokens</span></li>
-  <li>Low-tier models (4.1-mini, 4o-mini, phi-4): <strong>15 RPM · 150 RPD · 5 concurrent</strong></li>
-  <li>High-tier (4.1, 4o, llama-3.3-70b, llama-3.1-405b): <strong>10 RPM · 50 RPD · 2 concurrent</strong></li>
-  <li>Custom-tier (GPT-5, o1, o3, DeepSeek-R1, Grok): typically ~8 RPM, ~25 RPD <span class="warn">(very tight)</span></li>
+  <li>Default: <code>gpt-5.6-terra</code> <span class="star">★ default</span> ($2.00/$12.00 per Mtok). The bare alias <code>gpt-5.6</code> routes to <code>sol</code>, the dearest of the family — name the variant you mean</li>
+  <li>Context: <strong>922K in / 128K out</strong></li>
+  <li>Never free at any tier; the gateway paces itself at <strong>60 RPM · 200K TPM</strong> as a deliberate under-estimate</li>
 </ul>
 <p><b>Get a key:</b></p>
 <ol>
-  <li>Go to <a href="https://github.com/marketplace/models" target="_blank">github.com/marketplace/models</a></li>
-  <li>Sign in with your GitHub account</li>
-  <li>Pick any model → <strong>Use this model</strong> → <strong>Get API key</strong></li>
-  <li>This generates a <strong>Personal Access Token</strong> (no scopes required for Models)</li>
-  <li>Or via Settings: <strong>Developer settings</strong> → <strong>Personal access tokens (fine-grained)</strong> → Generate</li>
+  <li>Go to <a href="https://platform.openai.com/api-keys" target="_blank">platform.openai.com/api-keys</a></li>
+  <li><strong>Create new secret key</strong> → copy the <code>sk-proj-…</code> key</li>
+  <li>Fund the account — usage tier (and real rate limits) grow with spend</li>
 </ol>
 
-<h3>7. Ollama (local)</h3>
+<h3>4. Ollama (local)</h3>
 <ul>
   <li>Runs on your machine — zero rate limits, zero cost, 0ms cooldown</li>
   <li>Default: <code>gemma4:31b</code></li>
@@ -200,52 +149,45 @@ for chunk in llm.stream("count to 5"):
   <li>Install: <a href="https://ollama.com" target="_blank">ollama.com</a> → download for your OS</li>
   <li>Pull a model: <code>ollama pull gemma4:31b</code> (or <code>llama3.2</code>, <code>phi4</code>, etc.)</li>
   <li>Verify: <code>ollama list</code></li>
-  <li>The gateway auto-detects via <code>OLLAMA_URL</code> (default: <code>http://localhost:11434</code>)</li>
+  <li>The gateway auto-detects via <code>OLLAMA_URL</code> (default: <code>http://localhost:11434</code>) — but registers only when <code>OLLAMA_MODEL</code> is set</li>
 </ol>
 
+<h3>Retired free tiers</h3>
+<p>Groq, Cerebras, NVIDIA NIM and GitHub Models are still supported by the code
+but carry no keys and sit outside the default routing. Their old free-tier
+pacing rows remain in <code>glc/routing/core.py</code>; set a key and add the
+name back to <code>LLM_ORDER</code> to resurrect one. Note the Groq key also
+powered the Whisper speech-to-text provider, which is dark while the key is
+absent.</p>
+
 <h2>Summary table</h2>
+<p>RPM/RPD/TPM here are the gateway's <em>self-imposed</em> pacing from
+<code>glc/routing/core.py</code> — deliberate under-estimates of each paid
+account's real limits, because too low only throttles locally while too high
+buys 429s. Raise them once the accounts' real tiers are confirmed.</p>
 <table>
   <tr><th>Provider</th><th>Default model</th><th>RPM</th><th>RPD</th><th>Other limits</th></tr>
   <tr><td>Ollama</td><td>gemma4:31b</td><td>—</td><td>—</td><td>local, unlimited</td></tr>
-  <tr><td>Cerebras</td><td>zai-glm-4.7</td><td>30</td><td>—</td><td>1M tokens/day · 8K ctx cap</td></tr>
-  <tr><td>Groq</td><td>llama-3.3-70b-versatile</td><td>30</td><td>1,000</td><td>6K TPM · 500K tok/day</td></tr>
-  <tr><td>NVIDIA NIM</td><td>deepseek-ai/deepseek-v3.2</td><td>40</td><td>—</td><td>1K credits on signup</td></tr>
-  <tr><td>Gemini</td><td>gemini-3.1-flash-lite-preview</td><td>15</td><td>1,000</td><td>250K TPM · 1M ctx</td></tr>
-  <tr><td>OpenRouter</td><td>nvidia/nemotron-3-super-120b-a12b:free</td><td>20</td><td>50</td><td>per model · pooled</td></tr>
-  <tr><td>GitHub Models</td><td>openai/gpt-4.1-mini</td><td>10–15</td><td>50–150</td><td>8K in / 4K out per req</td></tr>
-  <tr><td>OpenAI</td><td>gpt-5.6-terra</td><td>60</td><td>—</td><td>922K in / 128K out · <strong>paid, never free</strong></td></tr>
+  <tr><td>Gemini</td><td>gemini-3.1-flash-lite</td><td>150</td><td>10,000</td><td>1M TPM · 1M ctx</td></tr>
+  <tr><td>OpenRouter</td><td>meta-llama/llama-3.3-70b-instruct</td><td>60</td><td>5,000</td><td>500K TPM · credit-metered</td></tr>
+  <tr><td>OpenAI</td><td>gpt-5.6-terra</td><td>60</td><td>—</td><td>200K TPM · 922K in / 128K out</td></tr>
 </table>
-<p>Every provider above OpenAI has a free tier; OpenAI does not. Its rate numbers
-here are deliberate under-estimates rather than measured limits — too low only
-throttles locally, too high buys 429s.</p>
 
 <h2>Configuration (.env)</h2>
-<p>The gateway reads from <code>EAGV3/.env</code>. All keys are optional — providers without keys are skipped.</p>
-<pre><code>GEMINI_API_KEY=...
-GEMINI_MODEL=gemini-3.1-flash-lite-preview
+<p>The gateway reads from <code>.env</code>. All keys are optional — providers without keys are skipped.</p>
+<pre><code>GEMINI_API_KEY_1=...        # numbered slots become a gemini_1..gemini_N pool
+GEMINI_MODEL=gemini-3.1-flash-lite
 
-NVIDIA_API_KEY=...
-NVIDIA_MODEL=deepseek-ai/deepseek-v3.2
-
-GROQ_API_KEY=...
-GROQ_MODEL=llama-3.3-70b-versatile
-
-CEREBRAS_API_KEY=...
-CEREBRAS_MODEL=zai-glm-4.7
-
-OPEN_ROUTER_API_KEY=...
-OPENROUTER_MODEL=nvidia/nemotron-3-super-120b-a12b:free
-
-GITHUB_ACCESS_TOKEN=...
-GITHUB_MODEL=openai/gpt-4.1-mini
+OPEN_ROUTER_API_KEY=...     # note the underscore: OPEN_ROUTER, not OPENROUTER
+OPENROUTER_MODEL=meta-llama/llama-3.3-70b-instruct
 
 OPENAI_API_KEY=...
 OPENAI_MODEL=gpt-5.6-terra
 
 OLLAMA_URL=http://localhost:11434
-OLLAMA_MODEL=gemma4:31b
+OLLAMA_MODEL=gemma4:31b     # ollama registers only when this is set
 
-LLM_ORDER=ollama,gemini,nvidia,groq,cerebras,openrouter,github,openai
+LLM_ORDER=ollama,gemini,openrouter,openai
 GLC_PORT=8111</code></pre>
 <p><code>openai</code> goes last in <code>LLM_ORDER</code> on purpose: the order is a
 failover ring, so the dearest provider belongs at the end of it. The bare alias
@@ -269,7 +211,9 @@ name the variant you mean.</p>
   <li>Router estimates token usage from prompt length.</li>
   <li>Walks providers in <code>LLM_ORDER</code>, skipping any that:
     <ul>
-      <li>Are inside their per-provider cooldown window (cooldown = 60/RPM)</li>
+      <li>Are inside their per-provider cooldown window (a fixed per-provider
+          seconds value in <code>glc/routing/core.py</code>, 1&nbsp;s for the
+          paid providers, 0 for local Ollama)</li>
       <li>Have hit RPM, RPD, TPM, or daily token cap</li>
       <li>Have a <code>max_ctx</code> smaller than the prompt</li>
     </ul>

@@ -40,8 +40,9 @@ def _providers(**kw):
 
 
 def test_shipped_tiers_match_v3_rings():
-    """Backward compatibility: routing.yaml's TINY and LARGE rings are v3's
-    TIER_TO_ORDER verbatim, so default routing does not move."""
+    """routing.yaml's TINY and LARGE rings are chat.py's TIER_TO_ORDER
+    verbatim (both rebuilt together on the paid-only provider set), so the
+    fallback ring and the authoritative policy cannot drift apart."""
     from glc.routes.chat import TIER_TO_ORDER
 
     pol = _pol()
@@ -373,14 +374,18 @@ def test_ladder_referencing_an_undeclared_tier_is_a_loud_error(tmp_path, monkeyp
 
 
 def _ladder_providers():
-    """The live pool as it actually is: a Gemini key pool plus one instance each."""
+    """The live pool as it actually is: a Gemini key pool plus one instance
+    each. The retired free providers (groq/cerebras/github/nvidia) stay in the
+    fixture deliberately — they no longer register from .env, but they still
+    exercise the tail-append, strict-rejection and max_ctx paths here."""
     return _providers(
         gemini_1="gemini-3.1-flash-lite",
         gemini_2="gemini-3.1-flash-lite",
         groq="openai/gpt-oss-120b",
         cerebras="zai-glm-4.7",
         github="openai/gpt-4.1",
-        openrouter="nvidia/nemotron-3-super-120b-a12b:free",
+        openrouter="meta-llama/llama-3.3-70b-instruct",
+        openai="gpt-5.6-terra",
         ollama="gemma4:31b",
         nvidia="deepseek-ai/deepseek-v4-pro",
     )
@@ -412,7 +417,7 @@ def test_a_strict_rung_cannot_be_served_by_a_model_outside_its_ring():
     CHEAP request could land on the frontier model."""
     pol, avail = _pol(), _ladder_providers()
     ordered, rejected = pol.order_for("CHEAP", avail, limits=LIMITS)
-    assert {avail[n].model for n in ordered} <= {"gemma4:31b", "nvidia/nemotron-3-super-120b-a12b:free"}
+    assert {avail[n].model for n in ordered} <= {"gemma4:31b", "meta-llama/llama-3.3-70b-instruct"}
     assert "github" not in ordered
     assert any("strict" in r["reason"] for r in rejected)
 
