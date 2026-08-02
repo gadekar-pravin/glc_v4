@@ -296,3 +296,115 @@ def test_config_comes_from_yaml_with_no_python_edit(tmp_path, monkeypatch):
     assert cfg.ttl_seconds == 42
     assert cfg.default_on is True
     assert cfg.scope_dimensions == ["project"]
+
+
+# ── what is worth storing ───────────────────────────────────────────────────
+#
+# A hit skips the provider entirely, so whatever is in the entry is the final
+# answer for the whole TTL. An answer the model never finished saying is not
+# an answer, and caching one turns a single truncated generation into an hour
+# of confidently truncated replies.
+
+
+async def test_a_truncated_response_is_not_stored():
+    """stop_reason max_tokens means the model was cut off mid-sentence."""
+    c = _cache()
+    c.embed_fn = _fixed_embedder({"q": [1.0, 0.0, 0.0]})
+    fields = {"model": "m"}
+
+    row_id = await c.store(
+        "q",
+        fields,
+        response={"text": "The tallest mountain on Earth, measured", "stop_reason": "max_tokens"},
+        provider="p",
+        model="m",
+        output_tokens=7,
+    )
+
+    assert row_id is None
+    assert (await c.lookup("q", fields)).hit is False
+    assert c.stats()["stores"] == 0
+
+
+async def test_an_empty_response_is_never_stored_even_if_it_finished():
+    """A thinking model can spend its whole budget reasoning and emit no text.
+
+    Unlike truncation this is not a policy question — an empty cached answer
+    has no use at any setting, so it is refused even with the knob off.
+    """
+    c = _cache(skip_when_truncated=False)
+    c.embed_fn = _fixed_embedder({"q": [1.0, 0.0, 0.0]})
+    fields = {"model": "m"}
+
+    row_id = await c.store(
+        "q", fields, response={"text": "", "stop_reason": "end_turn"}, provider="p", model="m"
+    )
+
+    assert row_id is None
+    assert (await c.lookup("q", fields)).hit is False
+
+
+async def test_storing_truncated_responses_is_configurable():
+    """The knob is YAML, not a Python edit — same as every other cache rule."""
+    c = _cache(skip_when_truncated=False)
+    c.embed_fn = _fixed_embedder({"q": [1.0, 0.0, 0.0]})
+    fields = {"model": "m"}
+
+    row_id = await c.store(
+        "q", fields, response={"text": "cut off here", "stop_reason": "max_tokens"}, provider="p", model="m"
+    )
+
+    assert row_id is not None
+    assert (await c.lookup("q", fields)).hit is True
+
+
+async def test_a_complete_response_is_still_stored():
+    """The guard must not cost us the ordinary case."""
+    c = _cache()
+    c.embed_fn = _fixed_embedder({"q": [1.0, 0.0, 0.0]})
+    fields = {"model": "m"}
+
+    row_id = await c.store(
+        "q", fields, response={"text": "Mount Everest.", "stop_reason": "end_turn"}, provider="p", model="m"
+    )
+
+    assert row_id is not None
+    assert (await c.lookup("q", fields)).hit is True
+    assert c.stats()["stores"] == 1
+
+
+def test_should_store_rules():
+    """Symmetric with should_consult: a verdict plus a human-readable reason."""
+    c = _cache()
+
+    ok, reason = c.should_store({"text": "a complete answer", "stop_reason": "end_turn"})
+    assert ok is True
+    assert reason == ""
+
+    ok, reason = c.should_store({"text": "cut off", "stop_reason": "max_tokens"})
+    assert ok is False
+    assert "truncat" in reason.lower()
+
+    ok, reason = c.should_store({"text": "   ", "stop_reason": "end_turn"})
+    assert ok is False
+    assert "empty" in reason.lower()
+
+
+def test_truncation_guard_ships_on():
+    assert SemanticCacheConfig().skip_when_truncated is True
+
+
+async def test_an_errored_generation_is_not_stored():
+    """`error` is the other stop_reason in the envelope that means the model
+    did not finish cleanly (glc/llm_schemas.py). Partial text from a failed
+    generation is not an answer either."""
+    c = _cache()
+    c.embed_fn = _fixed_embedder({"q": [1.0, 0.0, 0.0]})
+    fields = {"model": "m"}
+
+    row_id = await c.store(
+        "q", fields, response={"text": "partial output", "stop_reason": "error"}, provider="p", model="m"
+    )
+
+    assert row_id is None
+    assert (await c.lookup("q", fields)).hit is False

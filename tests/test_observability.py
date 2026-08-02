@@ -23,6 +23,12 @@ from fastapi.testclient import TestClient
 from glc.routes import observability as obs
 from glc.telemetry import otel as _otel
 
+#: The "no collector configured" baseline this file's docstring promises is
+#: enforced suite-wide by `_TELEMETRY_ENV` in conftest.py, so the tests below
+#: start from tracing-off whatever the developer's `.env` says. The two tests
+#: that want a live ring opt back in with monkeypatch.
+
+
 # ── the page ────────────────────────────────────────────────────────────────
 
 

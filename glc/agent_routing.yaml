@@ -17,9 +17,9 @@ planner: gemini
 researcher: gemini
 distiller: gemini
 summariser: gemini
-critic: groq
+critic: gemini
 formatter: gemini
-retriever: github
-sandbox_executor: github
+retriever: openrouter
+sandbox_executor: openrouter
 coder: gemini
 browser: gemini

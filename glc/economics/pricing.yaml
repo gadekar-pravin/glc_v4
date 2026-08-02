@@ -185,10 +185,25 @@ models:
     cache_read_multiplier: 0.25
     quality: 0.52
 
-  # OpenRouter free tier — CHEAP rung, second in the ring. Priced by name rather
-  # than by the `*:free` glob so the ladder's second rung is not a guess.
-  # MEASURED: 47 in / 108 out, $0.00, 1849 ms. Thinks by default and leaks the
-  # scratchpad straight into `content` when it runs out of tokens.
+  # OpenRouter. Paid credits as of 2026-08.
+  #
+  # The default and STANDARD rung. NOT gpt-oss-120b, which would have kept the
+  # rung's model when Groq retired: OpenRouter's gpt-oss endpoint answers
+  # `reasoning: "off"` with HTTP 400 "Reasoning is mandatory for this
+  # endpoint" (measured 2026-08-02), and gpt-oss left thinking burns small
+  # output budgets. Catalog rate 2026-08-02; quality mirrors the Groq-hosted
+  # llama-3.3-70b-versatile row above.
+  meta-llama/llama-3.3-70b-instruct:
+    provider: openrouter
+    input: 0.13
+    output: 0.40
+    quality: 0.48
+    measured_non_empty: true
+  #
+  # The former free-tier default, kept priced by name so old ledger rows and a
+  # re-pinned OPENROUTER_MODEL still report exact dollars. MEASURED: 47 in /
+  # 108 out, $0.00, 1849 ms. Thinks by default and leaks the scratchpad
+  # straight into `content` when it runs out of tokens.
   nvidia/nemotron-3-super-120b-a12b:free:
     provider: openrouter
     input: 0.0
@@ -197,6 +212,15 @@ models:
     measured_latency_ms: 1849
     measured_reference_usd: 0.0
     measured_non_empty: true
+    measured_needs_reasoning_off: true
+  # S15Code's judge_b. OpenRouter catalog rate 2026-08-02. The `z-ai/` prefix
+  # does not suffix-resolve to the bare cerebras `zai-glm-4.7` row above, so
+  # without this row the judges would bill at the openrouter provider floor.
+  z-ai/glm-4.7:
+    provider: openrouter
+    input: 0.40
+    output: 1.75
+    quality: 0.61
     measured_needs_reasoning_off: true
 
   # Local via Ollama — never charged, but priced at 0 explicitly so the report
@@ -220,10 +244,16 @@ models:
     output: 0.0
     quality: 0.26
 
-# ── Reference frontier rates (July 2026 list prices) ────────────────────────
-# Not reachable from the default .env, but priced so a deployment that adds an
-# Anthropic/OpenAI provider gets correct dollars with zero code change, and so
-# the cost-per-task lecture has real numbers to compare against.
+# ── Reference frontier rates ────────────────────────────────────────────────
+# The Anthropic rows are still reference-only. The three OpenAI rows are NOT:
+# `openai` is a real provider here now, so these are the rates the ledger bills.
+#
+# gpt-5.6 prices are as of the 2026-07-30 cut, which took Luna down 80% and
+# Terra down 20%; Sol was not cut. Two wrong numbers are in wide circulation and
+# both will pass review unnoticed — the launch prices (Luna 1.00/6.00, Terra
+# 2.50/15.00) that this file used to carry, and OpenRouter's 0.10/0.60 Luna,
+# which is a reseller promo rather than OpenAI list. Check the date before
+# "restoring" either.
   claude-haiku-4.5:
     provider: anthropic
     input: 1.00
@@ -250,15 +280,17 @@ models:
     quality: 0.61
   gpt-5.6-luna:
     provider: openai
-    input: 1.00
-    output: 6.00
+    input: 0.20
+    output: 1.20
     cache_read_multiplier: 0.1
     batch_multiplier: 0.5
     quality: 0.50
+  # The frontier rung of S15Code's ladder, after GitHub Models started 410ing and
+  # took openai/gpt-4.1 with it.
   gpt-5.6-terra:
     provider: openai
-    input: 2.50
-    output: 15.00
+    input: 2.00
+    output: 12.00
     cache_read_multiplier: 0.1
     batch_multiplier: 0.5
     quality: 0.55
@@ -307,10 +339,23 @@ patterns:
     input: 0.0
     output: 0.0
     quality: 0.40
+  # Deliberately `gpt-5*` and not `gpt-*`: globs are matched against the FULL
+  # model string (pricing.py), so `openai/gpt-4.1-mini` — GitHub's free default —
+  # is out of reach either way, but a bare `gpt-oss-120b` would be caught by the
+  # wider glob and billed 13x its real rate. Rates are Terra's, so an unpinned
+  # gpt-5 model over-bills against Luna rather than under-billing against Sol;
+  # pin it in `models:` above if you need exact dollars.
+  - match: "gpt-5*"
+    input: 2.00
+    output: 12.00
+    cache_read_multiplier: 0.1
+    batch_multiplier: 0.5
+    quality: 0.55
 
-# ── v3 per-provider table, kept verbatim as the backward-compatible floor ───
-# Reached only when nothing above matched. These are the exact numbers
-# glc_v3's pricing.PRICING_USD_PER_MTOK carried.
+# ── v3 per-provider table, the backward-compatible floor ───────────────────
+# Reached only when nothing above matched. These are the numbers glc_v3's
+# pricing.PRICING_USD_PER_MTOK carried, except where a provider moved to a
+# paid tier (openrouter) — a paid provider must never keep a $0 floor.
 providers:
   gemini:
     input: 0.0
@@ -324,12 +369,25 @@ providers:
   cerebras:
     input: 0.50
     output: 0.50
+  # Raised from v3's 0.0/0.0 when openrouter moved from the free tier to paid
+  # credits: a $0.00 floor lets an unrecognised PAID model through the budget
+  # controller as free (see the openai note below). Genuinely free models still
+  # price at zero first via the `*:free` glob above, so this floor only
+  # over-bills unknown paid models — the safe direction.
   openrouter:
-    input: 0.0
-    output: 0.0
+    input: 1.00
+    output: 4.00
   github:
     input: 0.0
     output: 0.0
+  # This row was never v3 history either. Every remaining $0 provider on this
+  # floor bills zero because it genuinely is free at the tier we use; OpenAI
+  # never is, and a $0.00 floor would let an unrecognised model through the
+  # budget controller as if it cost nothing — the failure that makes metering
+  # useless.
+  openai:
+    input: 2.00
+    output: 12.00
   ollama:
     input: 0.0
     output: 0.0
